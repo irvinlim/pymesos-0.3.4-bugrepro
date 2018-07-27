@@ -1,0 +1,59 @@
+version: '2.1'
+
+services:
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    command: bash -c "sleep 5 && python scheduler.py mesos-master:5050"
+    volumes:
+      - ./examples:/usr/src/app
+
+  operator:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    command: bash -c "sleep 5 && python operator_v1.py mesos-master:5050"
+    volumes:
+      - ./examples:/usr/src/app
+
+  zookeeper:
+    image: zookeeper:3.4.11
+
+  mesos-master:
+    image: mesosphere/mesos-master:1.5.0
+    privileged: true
+    links:
+      - zookeeper
+    depends_on:
+      - zookeeper
+    command: --registry=replicated_log
+    environment:
+      MESOS_ZK: zk://zookeeper:2181/mesos
+      MESOS_QUORUM: 1
+      MESOS_CLUSTER: docker-compose
+      MESOS_HOSTNAME: mesos-master
+      MESOS_WORK_DIR: /var/tmp/mesos
+      MESOS_LOG_DIR: /var/log/mesos
+      MESOS_REGISTRY: replicated_log
+
+  mesos-slave-1:
+    image: mesosphere/mesos-slave:1.5.0
+    privileged: true
+    links:
+      - zookeeper:zookeeper
+      - mesos-master:master.mesos
+    depends_on:
+      - zookeeper
+    environment:
+      MESOS_MASTER: zk://zookeeper:2181/mesos
+      MESOS_CONTAINERIZERS: docker
+      MESOS_PORT: 5051
+      MESOS_RESOURCES: ports(*):[11000-11999]
+      MESOS_HOSTNAME: mesos-slave-1
+      MESOS_WORK_DIR: /var/tmp/mesos
+      MESOS_LOG_DIR: /var/log/mesos
+      MESOS_SYSTEMD_ENABLE_SUPPORT: "false"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
